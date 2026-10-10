@@ -1,8 +1,8 @@
 //! Embeds the fonts of the optional craft-fonts build input (`CRAFT_FONTS_DIR`) as `CRAFT_FONTS`.
 //! The recipe is craft-fonts' `docs/integration.md`; unset, `CRAFT_FONTS` is empty. It only reads
-//! the local checkout (no network). On wasm32 it embeds only the UI faces (BIZ UDPGothic Regular
-//! and any `Arab` or `Telu` face), to keep the web build within hosting limits (Cloudflare Pages:
-//! 25 MiB per file).
+//! the local checkout (no network). On wasm32 it embeds only the UI faces (BIZ UDPGothic Regular,
+//! the first allowed `Hans` face, and any `Arab` or `Telu` face), to keep the web build within
+//! hosting limits (Cloudflare Pages: 25 MiB per file).
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -38,6 +38,7 @@ fn craft_fonts(dir: &std::path::Path) -> Result<String, String> {
     let text = std::fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
     let wasm = std::env::var("CARGO_CFG_TARGET_ARCH").is_ok_and(|a| a == "wasm32");
     let mut out = String::new();
+    let mut web_hans = false;
     for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
         let f: Vec<&str> = line.split(" | ").map(str::trim).collect();
         let [family, style, file, scripts, ..] = f.as_slice() else {
@@ -53,7 +54,11 @@ fn craft_fonts(dir: &std::path::Path) -> Result<String, String> {
         let arabic = scripts.split(',').any(|s| s.trim() == "Arab");
         // Telugu faces too, for the Telugu interface.
         let telugu = scripts.split(',').any(|s| s.trim() == "Telu");
-        let web_face = (*family == "BIZ UDPGothic" && *style == "Regular") || arabic || telugu;
+        // One Chinese face (the first allowed `Hans` one), for the Chinese interfaces: without it
+        // the web build draws most Simplified-only characters as boxes (#826).
+        let hans = !web_hans && scripts.split(',').any(|s| s.trim() == "Hans");
+        web_hans |= hans;
+        let web_face = (*family == "BIZ UDPGothic" && *style == "Regular") || hans || arabic || telugu;
         if wasm && !web_face {
             continue;
         }

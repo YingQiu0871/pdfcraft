@@ -66,23 +66,23 @@ pub fn ui_telugu_fonts() -> Vec<&'static CraftFont> {
     CRAFT_FONTS.iter().filter(|f| f.covers("Telu")).collect()
 }
 
-/// Interface CJK faces in fallback order for the UI language: Simplified Chinese first when
-/// `prefer_hans`, otherwise Japanese first (the historical default).
+/// Interface CJK faces in fallback order for the UI language: the faces for `first` (an ISO
+/// 15924 script: `"Hans"` in Simplified Chinese, `"Hant"` in Traditional Chinese, `"Jpan"`
+/// otherwise, the historical default) come first.
 ///
 /// The order matters beyond glyph shapes. egui renders each character with the FIRST face that
 /// has its glyph, so with Japanese first a Simplified-only character (e.g. U+6B22 欢, absent
 /// from Japanese faces) lands in a different face than its neighbours; the mixed vertical
 /// metrics then sink it below the line. Preferring the UI language's face keeps one line in
 /// one face with one baseline.
-pub fn ui_cjk_fonts(prefer_hans: bool) -> Vec<&'static CraftFont> {
-    order_cjk(CRAFT_FONTS.iter(), prefer_hans)
+pub fn ui_cjk_fonts(first: &str) -> Vec<&'static CraftFont> {
+    order_cjk(CRAFT_FONTS.iter(), first)
 }
 
-fn order_cjk<'a>(faces: impl IntoIterator<Item = &'a CraftFont>, prefer_hans: bool) -> Vec<&'a CraftFont> {
-    let mut out: Vec<&'a CraftFont> = faces.into_iter().filter(|f| f.covers("Hans") || f.covers("Jpan")).collect();
-    let first = if prefer_hans { "Hans" } else { "Jpan" };
-    // The preferred script's faces first (a face covering both counts as preferred); within each
-    // group the Japanese UI face (BIZ UDPGothic, not a serif) leads, otherwise manifest order
+fn order_cjk<'a>(faces: impl IntoIterator<Item = &'a CraftFont>, first: &str) -> Vec<&'a CraftFont> {
+    let mut out: Vec<&'a CraftFont> = faces.into_iter().filter(|f| f.covers("Hans") || f.covers("Hant") || f.covers("Jpan")).collect();
+    // The preferred script's faces first (a face covering several counts as preferred); within
+    // each group the Japanese UI face (BIZ UDPGothic, not a serif) leads, otherwise manifest order
     // (the sort is stable).
     out.sort_by_key(|f| (!f.covers(first), f.family != "BIZ UDPGothic"));
     out
@@ -182,19 +182,25 @@ mod tests {
         let inter = CraftFont { family: "Inter", style: "Regular", scripts: LATN, bytes: BYTES };
         let faces = [biz_bold, biz, hans, inter];
         // Chinese mode: the Hans group first (manifest order), then Japanese.
-        let zh: Vec<&str> = order_cjk([&faces[0], &faces[2], &faces[1]], true).iter().map(|f| f.family).collect();
+        let zh: Vec<&str> = order_cjk([&faces[0], &faces[2], &faces[1]], "Hans").iter().map(|f| f.family).collect();
         assert_eq!(zh, ["FakeHans", "BIZ UDPGothic", "BIZ UDPGothic"]);
         // Japanese mode keeps the historical default: the Japanese UI face first.
-        let ja: Vec<&str> = order_cjk([&faces[0], &faces[2], &faces[1]], false).iter().map(|f| f.family).collect();
+        let ja: Vec<&str> = order_cjk([&faces[0], &faces[2], &faces[1]], "Jpan").iter().map(|f| f.family).collect();
         assert_eq!(ja, ["BIZ UDPGothic", "BIZ UDPGothic", "FakeHans"]);
         // Latin-only faces are never interface CJK fallbacks.
-        assert!(order_cjk(&faces, true).iter().all(|f| f.covers("Hans") || f.covers("Jpan")));
+        assert!(order_cjk(&faces, "Hans").iter().all(|f| f.covers("Hans") || f.covers("Jpan")));
         // A serif listed first in the manifest never leads the Japanese group, in either mode.
         let mincho = CraftFont { family: "Shippori Mincho", style: "Regular", scripts: JPAN_LATN, bytes: BYTES };
-        let zh: Vec<&str> = order_cjk([&mincho, &faces[2], &faces[1]], true).iter().map(|f| f.family).collect();
+        let zh: Vec<&str> = order_cjk([&mincho, &faces[2], &faces[1]], "Hans").iter().map(|f| f.family).collect();
         assert_eq!(zh, ["FakeHans", "BIZ UDPGothic", "Shippori Mincho"]);
-        let ja: Vec<&str> = order_cjk([&mincho, &faces[2], &faces[1]], false).iter().map(|f| f.family).collect();
+        let ja: Vec<&str> = order_cjk([&mincho, &faces[2], &faces[1]], "Jpan").iter().map(|f| f.family).collect();
         assert_eq!(ja, ["BIZ UDPGothic", "Shippori Mincho", "FakeHans"]);
+        // Traditional Chinese mode: a face for both Chinese scripts leads, a Simplified-only
+        // face stays behind the Japanese ones.
+        static HANS_HANT: &[&str] = &["Hans", "Hant", "Latn"];
+        let both = CraftFont { family: "FakeBoth", style: "Regular", scripts: HANS_HANT, bytes: BYTES };
+        let zht: Vec<&str> = order_cjk([&faces[2], &faces[1], &both], "Hant").iter().map(|f| f.family).collect();
+        assert_eq!(zht, ["FakeBoth", "BIZ UDPGothic", "FakeHans"]);
     }
 
     #[test]
@@ -233,7 +239,7 @@ mod tests {
         let ar: Vec<&str> = arabic(&faces).iter().map(|f| f.family).collect();
         assert_eq!(ar, ["FakeNaskh", "FakeKufi"]);
         // An Arabic face is never a CJK fallback, and the other way round.
-        assert!(order_cjk(&faces, false).iter().all(|f| f.family == "BIZ UDPGothic"));
+        assert!(order_cjk(&faces, "Jpan").iter().all(|f| f.family == "BIZ UDPGothic"));
         assert_eq!(ui_arabic_fonts().len(), CRAFT_FONTS.iter().filter(|f| f.covers("Arab")).count());
     }
 

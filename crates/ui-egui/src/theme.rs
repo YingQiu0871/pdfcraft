@@ -153,6 +153,16 @@ impl CjkPreference {
             _ => Self::Default,
         }
     }
+
+    /// The ISO 15924 script whose craft-fonts faces lead the CJK fallback: `Hans`, `Hant`, or
+    /// `Jpan` (the historical default).
+    pub fn script(self) -> &'static str {
+        match self {
+            Self::SimplifiedChinese => "Hans",
+            Self::TraditionalChinese => "Hant",
+            Self::Default => "Jpan",
+        }
+    }
 }
 
 /// Install the interface fonts with the CJK fallback order for the UI language (Chinese
@@ -179,7 +189,7 @@ pub const SYSTEM_FALLBACK: &str = "system-fallback";
 /// `PDFCRAFT_SYSTEM_FONTS=0` leaves it out.
 pub fn installed_font_definitions(cjk: CjkPreference) -> FontDefinitions {
     #[cfg_attr(target_arch = "wasm32", expect(unused_mut))]
-    let mut fonts = font_definitions_for(cjk == CjkPreference::SimplifiedChinese);
+    let mut fonts = font_definitions_for(cjk.script());
     #[cfg(not(target_arch = "wasm32"))]
     {
         use crate::system_fonts::{Need, fallback};
@@ -208,14 +218,15 @@ pub fn installed_font_definitions(cjk: CjkPreference) -> FontDefinitions {
 /// the CJK, Arabic and Telugu faces of the optional craft-fonts build input as the last fallback
 /// in every family. Without craft-fonts there is no Japanese, Chinese, Arabic or Telugu face here.
 pub fn font_definitions() -> FontDefinitions {
-    font_definitions_for(false)
+    font_definitions_for("Jpan")
 }
 
-/// [`font_definitions`] with the CJK fallback order for the UI language. Simplified Chinese
-/// must come first in Chinese mode: otherwise shared characters render in the Japanese face
+/// [`font_definitions`] with the CJK fallback order for the UI language: the faces for the
+/// script `cjk_first` (see [`CjkPreference::script`]) first. The Chinese faces must come first
+/// in Chinese mode: otherwise shared characters render in the Japanese face
 /// while Simplified-only characters (e.g. U+6B22 欢) fall through to the Chinese face, and
 /// the mixed vertical metrics sink them below the line.
-pub fn font_definitions_for(prefer_hans: bool) -> FontDefinitions {
+pub fn font_definitions_for(cjk_first: &str) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let add = |fonts: &mut FontDefinitions, name: &str, bytes: &'static [u8]| {
         fonts.font_data.insert(name.to_owned(), Arc::new(FontData::from_static(bytes)));
@@ -228,7 +239,7 @@ pub fn font_definitions_for(prefer_hans: bool) -> FontDefinitions {
     fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "Inter".to_owned());
     fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "JetBrainsMono".to_owned());
     // The same static bytes pdfcraft-fonts uses for Japanese/Chinese text in PDFs: one copy, not two.
-    for face in pdfcraft_fonts::ui_cjk_fonts(prefer_hans) {
+    for face in pdfcraft_fonts::ui_cjk_fonts(cjk_first) {
         let name = face.name();
         // Japanese and Chinese faces have distinct family names, so no collision here.
         if !fonts.font_data.contains_key(&name) {

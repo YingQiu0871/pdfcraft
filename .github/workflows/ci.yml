@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: storytold/craft-fonts
-          ref: 8dcdacd5153e64560d109541a47d806f26f048c0
+          ref: f1b11df810d80d542b7f022376843289692b2eaf
           path: craft-fonts
 
       - name: Install Linux system dependencies (egui/winit/rfd)

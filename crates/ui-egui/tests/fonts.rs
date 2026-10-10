@@ -56,7 +56,7 @@ fn chinese_ui_text_prefers_the_chinese_face() {
         );
         return;
     }
-    let defs = theme::font_definitions_for(true);
+    let defs = theme::font_definitions_for("Hans");
     let hans: Vec<String> = pdfcraft_fonts::ui_chinese_fonts().iter().map(|f| f.name()).collect();
     for family in [FontFamily::Proportional, FontFamily::Monospace] {
         let stack = &defs.families[&family];
@@ -71,6 +71,31 @@ fn chinese_ui_text_prefers_the_chinese_face() {
     }
     for w in layout_widths(&mut fonts, CHINESE) {
         assert!(w > 13.0 * 0.8 * CHINESE.chars().count() as f32, "{w}");
+    }
+}
+
+/// Traditional Chinese puts a `Hant` face first too, and with the release-pinned craft-fonts input
+/// every Han character of the Traditional catalog has a glyph.
+#[test]
+fn traditional_chinese_ui_prefers_the_chinese_face() {
+    let hant: Vec<String> = pdfcraft_fonts::CRAFT_FONTS.iter().filter(|f| f.covers("Hant")).map(|f| f.name()).collect();
+    if hant.is_empty() {
+        eprintln!("skipping traditional_chinese_ui_prefers_the_chinese_face: no Hant face bundled");
+        return;
+    }
+    let defs = theme::font_definitions_for(theme::CjkPreference::TraditionalChinese.script());
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        let stack = &defs.families[&family];
+        let first_zh = stack.iter().position(|n| hant.contains(n)).expect("a Hant face is a fallback");
+        if let Some(first_ja) = stack.iter().position(|n| n.starts_with("BIZ UDPGothic")) {
+            assert!(first_zh < first_ja, "{family:?}: {stack:?}");
+        }
+    }
+    let mut fonts = Fonts::new(TextOptions::default(), defs);
+    let han = catalog_han(include_str!("../src/i18n/zh-hant.tsv"));
+    for id in families() {
+        let missing: String = han.chars().filter(|c| !fonts.has_glyphs(&id, &c.to_string())).collect();
+        assert!(missing.is_empty(), "{id:?} lacks {missing}");
     }
 }
 
